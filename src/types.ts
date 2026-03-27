@@ -5,6 +5,7 @@ export interface JobRecord {
   originalName: string
   sizeBefore: number
   sizeAfter?: number
+  originalPath?: string
   outputPath?: string
   ext?: string
   error?: string

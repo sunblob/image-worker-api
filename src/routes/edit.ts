@@ -24,6 +24,7 @@ export const editRoute = new Elysia()
       let inputBuffer: Buffer
       let originalName: string
       let sizeBefore: number
+      let originalPath: string | undefined
 
       if (sourceJobId) {
         const source = await getJob(sourceJobId)
@@ -35,13 +36,21 @@ export const editRoute = new Elysia()
           set.status = 400
           return { error: 'Source job is not done yet' }
         }
-        inputBuffer = Buffer.from(await Bun.file(source.outputPath!).arrayBuffer())
+        originalPath = source.originalPath
+        inputBuffer = Buffer.from(await Bun.file(originalPath!).arrayBuffer())
         originalName = source.originalName
         sizeBefore = source.sizeBefore
       } else {
-        inputBuffer = Buffer.from(await file!.arrayBuffer())
+        const rawBuffer = Buffer.from(await file!.arrayBuffer())
         originalName = file!.name
         sizeBefore = file!.size
+        inputBuffer = rawBuffer
+
+        // Save the original file so future edits always start from it
+        const ext = originalName.split('.').pop() ?? 'bin'
+        const tmpId = randomUUID()
+        originalPath = `${config.tmpDir}/${tmpId}_original.${ext}`
+        await Bun.write(originalPath, rawBuffer)
       }
 
       const id = randomUUID()
@@ -50,6 +59,7 @@ export const editRoute = new Elysia()
         status: 'processing',
         originalName,
         sizeBefore,
+        originalPath,
         createdAt: Date.now(),
       })
 
