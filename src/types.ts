@@ -13,12 +13,12 @@ export interface JobRecord {
 }
 
 export interface CompressOptions {
-  format?: 'webp' | 'avif' | 'jpeg' | 'png'
+  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif' | 'jxl'
   quality?: number
 }
 
 export interface EditOptions {
-  format?: 'webp' | 'avif' | 'jpeg' | 'png'
+  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif' | 'jxl'
   quality?: number
   width?: number
   height?: number

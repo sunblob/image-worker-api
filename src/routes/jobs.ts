@@ -3,6 +3,26 @@ import archiver from 'archiver';
 import { getJob, getJobs } from '../jobs/jobStore';
 import type { JobResponse } from '../types';
 
+const MIME_BY_EXT: Record<string, string> = {
+  webp: 'image/webp',
+  avif: 'image/avif',
+  jpeg: 'image/jpeg',
+  jpg: 'image/jpeg',
+  png: 'image/png',
+  tiff: 'image/tiff',
+  tif: 'image/tiff',
+  heif: 'image/heif',
+  heic: 'image/heic',
+  jxl: 'image/jxl',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+};
+
+function mimeFor(ext: string | undefined): string {
+  if (!ext) return 'application/octet-stream';
+  return MIME_BY_EXT[ext.toLowerCase()] ?? `image/${ext}`;
+}
+
 export const jobsRoute = new Elysia()
   .get(
     '/jobs/download',
@@ -96,9 +116,10 @@ export const jobsRoute = new Elysia()
       }
 
       const filename = `${job.originalName}.${job.ext}`;
+      const mime = mimeFor(job.ext);
       return new Response(bunFile, {
         headers: {
-          'Content-Type': `image/${job.ext}`,
+          'Content-Type': mime,
           'Content-Disposition': `attachment; filename="${filename}"`,
           'Content-Length': String(bunFile.size),
         },

@@ -7,6 +7,7 @@ import { compressRoute } from './routes/compress'
 import { editRoute } from './routes/edit'
 import { jobsRoute } from './routes/jobs'
 import { proxyRoute } from './routes/proxy'
+import { scrapeRoute } from './routes/scrape'
 import { cleanupStaleTempFiles } from './jobs/cleanup'
 import { config } from './config'
 
@@ -27,6 +28,7 @@ const app = new Elysia({ serve: { maxRequestBodySize: config.maxUploadBytes } })
   .use(compressRoute)
   .use(editRoute)
   .use(proxyRoute)
+  .use(scrapeRoute)
   .listen(config.port)
 
 console.log(`image-worker-api listening on port ${config.port}`)
