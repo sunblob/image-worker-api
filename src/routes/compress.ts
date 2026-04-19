@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { compressBuffer, fetchRemoteImage } from '../services/imageService'
 import { createJob } from '../jobs/jobStore'
 import { runJob } from '../jobs/processJob'
+import { logger } from '../lib/logger'
 import type { CompressOptions } from '../types'
 
 const SUPPORTED_EXTS = new Set([
@@ -51,6 +52,7 @@ export const compressRoute = new Elysia()
           const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
 
           if (!SUPPORTED_EXTS.has(ext)) {
+            logger.warn('[compress] Unsupported file extension', { id, filename: file.name, ext })
             return { id, filename: file.name, status: 'error' as const }
           }
 
@@ -61,8 +63,11 @@ export const compressRoute = new Elysia()
             createdAt: Date.now(),
           })
 
+          logger.info('[compress] File job queued', { id, filename: file.name, size: file.size, ...opts })
           const buffer = Buffer.from(await file.arrayBuffer())
-          runJob(id, () => compressBuffer(buffer, opts)).catch(console.error)
+          runJob(id, () => compressBuffer(buffer, opts)).catch((err: unknown) => {
+            logger.error('[compress] File job failed', err, { id, filename: file.name })
+          })
 
           return { id, filename: file.name }
         })
@@ -76,10 +81,14 @@ export const compressRoute = new Elysia()
           try {
             new URL(url)
           } catch {
+            logger.warn('[compress] Invalid URL rejected', { id, url })
             return { id, filename, status: 'error' as const }
           }
 
-          const buffer = await fetchRemoteImage(url).catch(() => null)
+          const buffer = await fetchRemoteImage(url).catch((err: unknown) => {
+            logger.error('[compress] Failed to fetch remote image', err, { id, url })
+            return null
+          })
           if (!buffer) {
             return { id, filename, status: 'error' as const }
           }
@@ -91,15 +100,21 @@ export const compressRoute = new Elysia()
             createdAt: Date.now(),
           })
 
-          runJob(id, () => compressBuffer(buffer, opts)).catch(console.error)
+          logger.info('[compress] URL job queued', { id, url, size: buffer.length, ...opts })
+          runJob(id, () => compressBuffer(buffer, opts)).catch((err: unknown) => {
+            logger.error('[compress] URL job failed', err, { id, url })
+          })
           return { id, filename }
         })
       )
 
-      const toJobs = (r: PromiseSettledResult<{ id: string; filename: string; status?: 'error' }>) =>
-        r.status === 'fulfilled'
-          ? r.value
-          : { id: randomUUID(), filename: 'unknown', status: 'error' as const }
+      const toJobs = (r: PromiseSettledResult<{ id: string; filename: string; status?: 'error' }>) => {
+        if (r.status === 'rejected') {
+          logger.error('[compress] Unexpected promise rejection', r.reason)
+          return { id: randomUUID(), filename: 'unknown', status: 'error' as const }
+        }
+        return r.value
+      }
 
       return {
         jobs: [...fileResults.map(toJobs), ...urlResults.map(toJobs)],

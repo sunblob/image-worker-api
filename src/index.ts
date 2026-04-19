@@ -10,12 +10,19 @@ import { proxyRoute } from './routes/proxy'
 import { scrapeRoute } from './routes/scrape'
 import { cleanupStaleTempFiles } from './jobs/cleanup'
 import { config } from './config'
+import { logger } from './lib/logger'
 
 // Ensure temp directory exists before first request
 mkdirSync(config.tmpDir, { recursive: true })
 
 const app = new Elysia({ serve: { maxRequestBodySize: config.maxUploadBytes } })
   .use(cors({ origin: config.corsOrigin }))
+  .onError(({ error, request }) => {
+    logger.error('[http] Unhandled route error', error, {
+      method: request.method,
+      url: request.url,
+    })
+  })
   .use(
     cron({
       name: 'cleanup',
@@ -31,6 +38,6 @@ const app = new Elysia({ serve: { maxRequestBodySize: config.maxUploadBytes } })
   .use(scrapeRoute)
   .listen(config.port)
 
-console.log(`image-worker-api listening on port ${config.port}`)
+logger.info(`image-worker-api listening on port ${config.port}`)
 
 export { app }

@@ -1,4 +1,6 @@
 import { chromium, type Browser } from 'playwright'
+import { spawnSync } from 'child_process'
+import { logger } from '../lib/logger'
 
 // DOM-type shims: the page.evaluate callback runs inside Chromium, but
 // tsconfig lib is ESNext (no DOM). These declarations satisfy the checker.
@@ -31,12 +33,39 @@ const PAGE_TIMEOUT_MS = 15_000
 
 let browserPromise: Promise<Browser> | null = null
 
+/** Install the Chromium binary synchronously (blocks ~30s on first run). */
+function installChromium(): void {
+  logger.warn('[scraper] Chromium binary missing — running "playwright install chromium --with-deps"')
+  const result = spawnSync('npx', ['playwright', 'install', 'chromium', '--with-deps'], {
+    stdio: 'inherit',
+    shell: true,
+  })
+  if (result.status !== 0) {
+    throw new Error('playwright install chromium failed — check server permissions or disk space')
+  }
+  logger.info('[scraper] Chromium installed successfully')
+}
+
 async function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true }).then((b) => {
-      b.on('disconnected', () => { browserPromise = null })
-      return b
-    })
+    browserPromise = chromium.launch({ headless: true })
+      .catch(async (err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        if (msg.includes("Executable doesn't exist") || msg.includes('executable')) {
+          installChromium()
+          // Retry after install
+          return chromium.launch({ headless: true })
+        }
+        throw err
+      })
+      .then((b: Browser) => {
+        b.on('disconnected', () => {
+          logger.warn('[scraper] Browser disconnected — will relaunch on next request')
+          browserPromise = null
+        })
+        logger.info('[scraper] Chromium browser launched')
+        return b
+      })
   }
   return browserPromise
 }
@@ -105,6 +134,8 @@ export async function scrapePage(
   if (!isPublicUrl(targetUrl)) {
     throw new Error('URL must be a public http(s) URL')
   }
+
+  logger.info('[scraper] Starting scrape', { url: targetUrl, filters })
 
   const browser = await getBrowser()
   const context = await browser.newContext({
@@ -217,8 +248,11 @@ export async function scrapePage(
       if (results.length >= RESULT_CAP) break
     }
 
+    logger.info('[scraper] Scrape complete', { url: targetUrl, found: results.length })
     return results
   } finally {
-    await context.close().catch(() => {})
+    await context.close().catch((err: unknown) => {
+      logger.warn('[scraper] Failed to close browser context', { error: String(err) })
+    })
   }
 }

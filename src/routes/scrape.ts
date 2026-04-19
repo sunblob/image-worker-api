@@ -1,10 +1,12 @@
 import { Elysia, t } from 'elysia'
 import { scrapePage, isPublicUrl } from '../services/scraperService'
+import { logger } from '../lib/logger'
 
 export const scrapeRoute = new Elysia().post(
   '/scrape',
   async ({ body, set }) => {
     if (!isPublicUrl(body.url)) {
+      logger.warn('[scrape] Rejected non-public URL', { url: body.url })
       set.status = 400
       return { error: 'URL must be a public http(s) URL' }
     }
@@ -18,6 +20,7 @@ export const scrapeRoute = new Elysia().post(
       })
       return { images }
     } catch (err) {
+      logger.error('[scrape] Failed to scrape page', err, { url: body.url })
       set.status = 502
       return { error: err instanceof Error ? err.message : 'Scrape failed' }
     }
