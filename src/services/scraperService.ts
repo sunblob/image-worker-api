@@ -25,6 +25,7 @@ export interface ScrapedImage {
   alt?: string
   width?: number
   height?: number
+  size?: number          // bytes, from Content-Length HEAD request
   source: 'img' | 'picture' | 'css-bg' | 'meta' | 'icon'
 }
 
@@ -125,6 +126,40 @@ function pickLargestSrcset(srcset: string): string | null {
     if (!best || weight > best.weight) best = { url, weight }
   }
   return best?.url ?? null
+}
+
+/**
+ * Fetch Content-Length for each URL via HEAD requests, up to `concurrency` in
+ * parallel. Silently skips URLs that time out or return no Content-Length.
+ */
+async function fetchSizes(
+  urls: string[],
+  concurrency = 20,
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  const queue = [...urls]
+
+  async function worker() {
+    while (queue.length > 0) {
+      const url = queue.shift()!
+      try {
+        const res = await fetch(url, {
+          method: 'HEAD',
+          signal: AbortSignal.timeout(4_000),
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ImageWorker/1.0)' },
+        })
+        const len = res.headers.get('content-length')
+        if (len) map.set(url, parseInt(len, 10))
+      } catch {
+        // timeout or network error — skip
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, urls.length) }, () => worker()),
+  )
+  return map
 }
 
 export async function scrapePage(
@@ -246,6 +281,14 @@ export async function scrapePage(
       })
 
       if (results.length >= RESULT_CAP) break
+    }
+
+    // Enrich with file sizes via concurrent HEAD requests
+    const publicResults = results.filter((r) => !r.url.startsWith('data:'))
+    const sizes = await fetchSizes(publicResults.map((r) => r.url))
+    for (const img of publicResults) {
+      const s = sizes.get(img.url)
+      if (s) img.size = s
     }
 
     logger.info('[scraper] Scrape complete', { url: targetUrl, found: results.length })
