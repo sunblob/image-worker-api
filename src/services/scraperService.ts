@@ -14,10 +14,10 @@ type HTMLLinkElement = any
 type HTMLMetaElement = any
 
 export interface ScrapeFilters {
-  excludeIcons?: boolean
-  excludeHead?: boolean
-  excludeDataUri?: boolean
-  excludeSvg?: boolean
+  includeIcons?: boolean    // include favicons, <link rel="icon">, and tiny <32px images
+  includeHead?: boolean     // include og:image, twitter:image, etc.
+  includeDataUri?: boolean  // include data: URIs
+  includeSvg?: boolean      // include SVG images
 }
 
 export interface ScrapedImage {
@@ -225,14 +225,15 @@ export async function scrapePage(
 
       const source = (item.source === 'icon' ? 'icon' : item.source) as ScrapedImage['source']
 
-      if (filters.excludeDataUri && url.startsWith('data:')) continue
-      if (filters.excludeSvg && (url.toLowerCase().endsWith('.svg') || url.startsWith('data:image/svg'))) continue
-      if (filters.excludeIcons) {
+      // Skip anything whose "include" flag is not set
+      if (!filters.includeDataUri && url.startsWith('data:')) continue
+      if (!filters.includeSvg && (url.toLowerCase().endsWith('.svg') || url.startsWith('data:image/svg'))) continue
+      if (!filters.includeIcons) {
         if (source === 'icon') continue
         if (/\/favicon\.[a-z]+/i.test(url)) continue
         if (item.width && item.height && item.width < 32 && item.height < 32) continue
       }
-      if (filters.excludeHead && (source === 'meta' || source === 'icon')) continue
+      if (!filters.includeHead && (source === 'meta' || source === 'icon')) continue
 
       if (seen.has(url)) continue
       seen.add(url)

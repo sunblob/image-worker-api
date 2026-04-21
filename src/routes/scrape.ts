@@ -13,10 +13,10 @@ export const scrapeRoute = new Elysia().post(
 
     try {
       const images = await scrapePage(body.url, {
-        excludeIcons: body.excludeIcons,
-        excludeHead: body.excludeHead,
-        excludeDataUri: body.excludeDataUri,
-        excludeSvg: body.excludeSvg,
+        includeIcons: body.includeIcons,
+        includeHead: body.includeHead,
+        includeDataUri: body.includeDataUri,
+        includeSvg: body.includeSvg,
       })
       return { images }
     } catch (err) {
@@ -28,10 +28,10 @@ export const scrapeRoute = new Elysia().post(
   {
     body: t.Object({
       url: t.String(),
-      excludeIcons: t.Optional(t.Boolean()),
-      excludeHead: t.Optional(t.Boolean()),
-      excludeDataUri: t.Optional(t.Boolean()),
-      excludeSvg: t.Optional(t.Boolean()),
+      includeIcons: t.Optional(t.Boolean()),
+      includeHead: t.Optional(t.Boolean()),
+      includeDataUri: t.Optional(t.Boolean()),
+      includeSvg: t.Optional(t.Boolean()),
     }),
   }
 )
