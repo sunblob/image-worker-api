@@ -13,14 +13,26 @@ const MIME_BY_EXT: Record<string, string> = {
   tif: 'image/tiff',
   heif: 'image/heif',
   heic: 'image/heic',
-  jxl: 'image/jxl',
   gif: 'image/gif',
   svg: 'image/svg+xml',
+  ico: 'image/x-icon',
 };
 
 function mimeFor(ext: string | undefined): string {
   if (!ext) return 'application/octet-stream';
   return MIME_BY_EXT[ext.toLowerCase()] ?? `image/${ext}`;
+}
+
+/**
+ * `photo.jpg` compressed to webp becomes `photo.webp`. When the output format matches what
+ * the file already was — always the case for a passthrough — the original name is left alone,
+ * so `photo.jpg` doesn't come back as `photo.jpeg`.
+ */
+function downloadName(originalName: string, ext: string | undefined): string {
+  if (!ext) return originalName;
+  const currentExt = originalName.match(/\.([^.]+)$/)?.[1];
+  if (currentExt && mimeFor(currentExt) === mimeFor(ext)) return originalName;
+  return `${originalName.replace(/\.[^.]+$/, '')}.${ext}`;
 }
 
 export const jobsRoute = new Elysia()
@@ -38,8 +50,7 @@ export const jobsRoute = new Elysia()
       const archive = archiver('zip', { zlib: { level: 6 } });
 
       for (const job of jobs) {
-        const basename = job!.originalName.replace(/\.[^.]+$/, '');
-        archive.file(job!.outputPath!, { name: `${basename}.${job!.ext}` });
+        archive.file(job!.outputPath!, { name: downloadName(job!.originalName, job!.ext) });
       }
 
       const buffer = await new Promise<Buffer>((resolve, reject) => {
@@ -77,6 +88,7 @@ export const jobsRoute = new Elysia()
         sizeBefore: job.sizeBefore,
         sizeAfter: job.sizeAfter,
         ext: job.ext,
+        passthrough: job.passthrough,
         error: job.error,
         createdAt: job.createdAt,
       };
@@ -92,6 +104,7 @@ export const jobsRoute = new Elysia()
           sizeBefore: t.Number(),
           sizeAfter: t.Optional(t.Number()),
           ext: t.Optional(t.String()),
+          passthrough: t.Optional(t.Boolean()),
           error: t.Optional(t.String()),
           createdAt: t.Number(),
         }),
@@ -115,7 +128,7 @@ export const jobsRoute = new Elysia()
         return { error: 'File not found on disk' };
       }
 
-      const filename = `${job.originalName}.${job.ext}`;
+      const filename = downloadName(job.originalName, job.ext);
       const mime = mimeFor(job.ext);
       return new Response(bunFile, {
         headers: {

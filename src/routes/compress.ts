@@ -7,7 +7,7 @@ import { logger } from '../lib/logger'
 import type { CompressOptions } from '../types'
 
 const SUPPORTED_EXTS = new Set([
-  'jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'tiff', 'tif', 'svg', 'heic', 'heif', 'jxl',
+  'jpg', 'jpeg', 'png', 'webp', 'avif', 'gif', 'tiff', 'tif', 'svg', 'ico', 'heic', 'heif',
 ])
 
 function parseUrls(raw: unknown): string[] {

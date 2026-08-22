@@ -8,17 +8,19 @@ export interface JobRecord {
   originalPath?: string
   outputPath?: string
   ext?: string
+  /** Output is the original file, untouched (unencodable format, or compression made it bigger). */
+  passthrough?: boolean
   error?: string
   createdAt: number
 }
 
 export interface CompressOptions {
-  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif' | 'jxl'
+  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif'
   quality?: number
 }
 
 export interface EditOptions {
-  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif' | 'jxl'
+  format?: 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif'
   quality?: number
   width?: number
   height?: number
@@ -38,6 +40,7 @@ export interface JobResponse {
   sizeBefore: number
   sizeAfter?: number
   ext?: string
+  passthrough?: boolean
   error?: string
   createdAt: number
 }

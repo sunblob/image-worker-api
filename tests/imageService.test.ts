@@ -19,6 +19,49 @@ describe('compressBuffer', () => {
     const { ext } = await compressBuffer(testJpeg, { quality: 80 })
     expect(ext).toBe('jpeg')
   })
+
+  it('returns SVG untouched', async () => {
+    const svg = Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>')
+    const { buffer, ext, passthrough } = await compressBuffer(svg, { format: 'webp', quality: 80 })
+    expect(passthrough).toBe(true)
+    expect(ext).toBe('svg')
+    expect(buffer.equals(svg)).toBe(true)
+  })
+
+  it('returns ICO untouched', async () => {
+    // ICONDIR (1 entry) + one 16x16 ICONDIRENTRY, contents irrelevant — sharp never sees it
+    const ico = Buffer.concat([
+      Buffer.from([0x00, 0x00, 0x01, 0x00, 0x01, 0x00]),
+      Buffer.alloc(16, 0x10),
+    ])
+    const { buffer, ext, passthrough } = await compressBuffer(ico, { quality: 80 })
+    expect(passthrough).toBe(true)
+    expect(ext).toBe('ico')
+    expect(buffer.equals(ico)).toBe(true)
+  })
+
+  it('keeps the original when re-encoding makes the file bigger', async () => {
+    // Random noise is near-incompressible: a lossy JPEG of it blows up as lossless PNG.
+    const noise = Buffer.alloc(64 * 64 * 3)
+    for (let i = 0; i < noise.length; i++) noise[i] = (i * 2654435761) % 251
+    const noiseJpeg = await sharp(noise, { raw: { width: 64, height: 64, channels: 3 } })
+      .jpeg({ quality: 40 })
+      .toBuffer()
+
+    const { buffer, ext, passthrough } = await compressBuffer(noiseJpeg, { format: 'png' })
+    expect(passthrough).toBe(true)
+    expect(ext).toBe('jpeg')
+    expect(buffer.equals(noiseJpeg)).toBe(true)
+  })
+
+  it('returns the compressed result when it is smaller', async () => {
+    const big = await sharp({
+      create: { width: 400, height: 400, channels: 3, background: { r: 12, g: 200, b: 90 } },
+    }).png().toBuffer()
+    const { buffer, passthrough } = await compressBuffer(big, { format: 'webp', quality: 60 })
+    expect(passthrough).toBeUndefined()
+    expect(buffer.length).toBeLessThan(big.length)
+  })
 })
 
 describe('transformBuffer', () => {

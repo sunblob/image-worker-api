@@ -12,6 +12,7 @@ const app = new Elysia().use(jobsRoute)
 
 const DONE_ID = 'test-jobs-done'
 const PROC_ID = 'test-jobs-proc'
+const PASS_ID = 'test-jobs-passthrough'
 
 beforeAll(async () => {
   mkdirSync(config.tmpDir, { recursive: true })
@@ -33,11 +34,25 @@ beforeAll(async () => {
     sizeBefore: 2000,
     createdAt: Date.now(),
   })
+
+  const icoPath = join(config.tmpDir, `${PASS_ID}.ico`)
+  await writeFile(icoPath, Buffer.from('fake-ico'))
+  await createJob(PASS_ID, {
+    status: 'done',
+    originalName: 'favicon.ico',
+    sizeBefore: 3300,
+    sizeAfter: 3300,
+    outputPath: icoPath,
+    ext: 'ico',
+    passthrough: true,
+    createdAt: Date.now(),
+  })
 })
 
 afterAll(async () => {
   await redis.del(`job:${DONE_ID}`)
   await redis.del(`job:${PROC_ID}`)
+  await redis.del(`job:${PASS_ID}`)
   
 })
 
@@ -49,6 +64,12 @@ describe('GET /jobs/:id', () => {
     expect(body.status).toBe('done')
     expect(body.id).toBe(DONE_ID)
     expect(body.outputPath).toBeUndefined()
+  })
+
+  it('exposes the passthrough flag', async () => {
+    const res = await app.handle(new Request(`http://localhost/jobs/${PASS_ID}`))
+    const body = await res.json() as any
+    expect(body.passthrough).toBe(true)
   })
 
   it('returns 404 for unknown job', async () => {
@@ -64,8 +85,17 @@ describe('GET /jobs/:id/download', () => {
     )
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toContain('image/webp')
-    expect(res.headers.get('content-disposition')).toContain('photo.jpg')
-    expect(res.headers.get('content-disposition')).toContain('.webp')
+    expect(res.headers.get('content-disposition')).toContain('photo.webp')
+  })
+
+  it('serves a passthrough file under its original name', async () => {
+    const res = await app.handle(
+      new Request(`http://localhost/jobs/${PASS_ID}/download`)
+    )
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toContain('image/x-icon')
+    expect(res.headers.get('content-disposition')).toContain('favicon.ico')
+    expect(res.headers.get('content-disposition')).not.toContain('favicon.ico.ico')
   })
 
   it('returns 404 for processing job', async () => {

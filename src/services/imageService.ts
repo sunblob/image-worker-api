@@ -1,7 +1,7 @@
 import sharp from 'sharp'
 import type { CompressOptions, EditOptions } from '../types'
 
-export type SharpFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif' | 'jxl'
+export type SharpFormat = 'webp' | 'avif' | 'jpeg' | 'png' | 'tiff' | 'heif'
 
 const ENCODER_NAMES: Record<SharpFormat, string> = {
   webp: 'webp',
@@ -10,12 +10,47 @@ const ENCODER_NAMES: Record<SharpFormat, string> = {
   png: 'png',
   tiff: 'tiff',
   heif: 'heif',
-  jxl: 'jxl',
 }
 
 export function isFormatSupported(format: SharpFormat): boolean {
   const info = (sharp as any).format?.[ENCODER_NAMES[format]]
   return Boolean(info?.output?.buffer)
+}
+
+export interface ProcessResult {
+  buffer: Buffer
+  ext: string
+  /**
+   * True when `buffer` is the untouched input. Happens either because the format
+   * can't be re-encoded (svg/ico) or because compressing made the file bigger.
+   */
+  passthrough?: boolean
+}
+
+function looksLikeSvg(input: Buffer): boolean {
+  // Strip a UTF-8 BOM and leading whitespace, then look for the root tag.
+  // A prolog/DOCTYPE/comment may sit in front of it, so scan a chunk rather than the first bytes.
+  const head = input.subarray(0, 2048).toString('utf8').replace(/^\uFEFF/, '').trimStart()
+  return head.startsWith('<') && /<svg[\s/>]/i.test(head)
+}
+
+function looksLikeIco(input: Buffer): boolean {
+  // ICONDIR: reserved(0) + type(1=icon, 2=cursor) + image count
+  return (
+    input.length >= 6 &&
+    input[0] === 0x00 &&
+    input[1] === 0x00 &&
+    (input[2] === 0x01 || input[2] === 0x02) &&
+    input[3] === 0x00 &&
+    input.readUInt16LE(4) > 0
+  )
+}
+
+/** Formats libvips cannot encode — they are served back byte-for-byte. */
+export function detectPassthroughFormat(input: Buffer): 'svg' | 'ico' | null {
+  if (looksLikeIco(input)) return 'ico'
+  if (looksLikeSvg(input)) return 'svg'
+  return null
 }
 
 async function detectFormat(input: Buffer): Promise<SharpFormat> {
@@ -26,8 +61,14 @@ async function detectFormat(input: Buffer): Promise<SharpFormat> {
 export async function compressBuffer(
   input: Buffer,
   opts: CompressOptions
-): Promise<{ buffer: Buffer; ext: string }> {
-  const format = opts.format ?? (await detectFormat(input))
+): Promise<ProcessResult> {
+  const rawFormat = detectPassthroughFormat(input)
+  if (rawFormat) {
+    return { buffer: input, ext: rawFormat, passthrough: true }
+  }
+
+  const originalFormat = await detectFormat(input)
+  const format = opts.format ?? originalFormat
   if (!isFormatSupported(format)) {
     throw new Error(`Output format "${format}" is not supported by this Sharp/libvips build`)
   }
@@ -35,6 +76,11 @@ export async function compressBuffer(
   const sharpOpts: Record<string, unknown> = { quality }
   if (format === 'heif') sharpOpts.compression = 'hevc'
   const buffer = await sharp(input).toFormat(format as any, sharpOpts).toBuffer()
+
+  // Re-encoding made it heavier — hand back the original instead.
+  if (buffer.length > input.length) {
+    return { buffer: input, ext: originalFormat, passthrough: true }
+  }
   return { buffer, ext: format }
 }
 
